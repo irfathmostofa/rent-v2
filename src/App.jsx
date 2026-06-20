@@ -1,17 +1,17 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { AuthProvider } from './context/AuthContext'
-import ProtectedRoute from './components/ProtectedRoute'
-import DashboardLayout from './components/DashboardLayout'
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider } from "./context/AuthContext";
+import ProtectedRoute from "./components/ProtectedRoute";
+import DashboardLayout from "./components/DashboardLayout";
 
-import Register from './pages/Register'
-import Login from './pages/Login'
-import Overview from './pages/Overview'
-import Properties from './pages/Properties'
-import Rentals from './pages/Rentals'
-import Invoices from './pages/Invoices'
-import Overdue from './pages/Overdue'
-import Messages from './pages/Messages'
-import AdminDashboard from './pages/AdminDashboard'
+import Register from "./pages/Register";
+import Login from "./pages/Login";
+import Overview from "./pages/Overview";
+import Properties from "./pages/Properties";
+import Rentals from "./pages/Rentals";
+import Invoices from "./pages/Invoices";
+import Overdue from "./pages/Overdue";
+import Messages from "./pages/Messages";
+import AdminDashboard from "./pages/AdminDashboard";
 
 export default function App() {
   return (
@@ -24,7 +24,11 @@ export default function App() {
 
           <Route
             path="/dashboard"
-            element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}
+            element={
+              <ProtectedRoute>
+                <DashboardLayout />
+              </ProtectedRoute>
+            }
           >
             <Route index element={<Overview />} />
             <Route path="properties" element={<Properties />} />
@@ -36,7 +40,11 @@ export default function App() {
 
           <Route
             path="/admin"
-            element={<ProtectedRoute requireSuperAdmin><DashboardLayout /></ProtectedRoute>}
+            element={
+              <ProtectedRoute requireSuperAdmin>
+                <DashboardLayout />
+              </ProtectedRoute>
+            }
           >
             <Route index element={<AdminDashboard />} />
           </Route>
@@ -45,5 +53,5 @@ export default function App() {
         </Routes>
       </BrowserRouter>
     </AuthProvider>
-  )
+  );
 }
