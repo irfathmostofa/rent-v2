@@ -189,10 +189,16 @@ export default function DashboardLayout() {
             {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
           </button> */}
 
-          <button className="notification-btn" aria-label="Notifications">
-            <Bell size={20} />
-            <span className="notification-badge">3</span>
-          </button>
+          <div className="page-actions">
+            <span className="date-display">
+              {new Date().toLocaleDateString("en-US", {
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })}
+            </span>
+          </div>
 
           <div className="profile-dropdown" ref={dropdownRef}>
             <button
@@ -295,62 +301,11 @@ export default function DashboardLayout() {
         {/* Main Content */}
         <main className="main-content">
           <div className="content-wrapper">
-            <div className="page-header">
-              <div>
-                <h1 className="page-title">{pageTitle}</h1>
-                <p className="page-subtitle">
-                  {isSuperAdmin
-                    ? "Manage all properties and users from one place"
-                    : "Manage your properties, rentals, and finances"}
-                </p>
-              </div>
-              <div className="page-actions">
-                <span className="date-display">
-                  {new Date().toLocaleDateString("en-US", {
-                    weekday: "long",
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                  })}
-                </span>
-              </div>
-            </div>
             <div className="content-body">
               <Outlet />
             </div>
           </div>
         </main>
-      </div>
-
-      {/* Floating Action Button (FAB) */}
-      <div className="fab-container">
-        {isFabOpen && (
-          <div className="fab-actions">
-            {fabActions.map((action, index) => {
-              const Icon = action.icon;
-              return (
-                <button
-                  key={index}
-                  className="fab-action-item"
-                  onClick={action.action}
-                  style={{
-                    animationDelay: `${index * 0.05}s`,
-                  }}
-                >
-                  <Icon size={20} />
-                  <span>{action.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-        <button
-          className={`fab-button ${isFabOpen ? "open" : ""}`}
-          onClick={() => setIsFabOpen(!isFabOpen)}
-          aria-label="Quick actions"
-        >
-          <Plus size={24} className="fab-icon" />
-        </button>
       </div>
 
       {/* Mobile Overlay */}
@@ -362,7 +317,6 @@ export default function DashboardLayout() {
       )}
 
       {/* Hidden triggers for FAB actions */}
-      <div style={{ display: "none" }} id="fab-triggers" />
 
       <style>{`
         /* CSS Variables */
@@ -822,7 +776,7 @@ export default function DashboardLayout() {
         .main-content {
           flex: 1;
           margin-left: var(--sidebar-width);
-          padding: 24px;
+          padding: 10px;
           min-height: calc(100vh - var(--header-height));
           padding-bottom: 100px; /* Space for FAB */
         }
@@ -879,17 +833,7 @@ export default function DashboardLayout() {
           min-height: 400px;
         }
 
-        /* Floating Action Button */
-        .fab-container {
-          position: fixed;
-          bottom: var(--fab-bottom);
-          right: var(--fab-right);
-          z-index: 1000;
-          display: flex;
-          flex-direction: column;
-          align-items: flex-end;
-          gap: 12px;
-        }
+       
 
         .fab-actions {
           display: flex;
@@ -1036,10 +980,7 @@ export default function DashboardLayout() {
             display: none;
           }
 
-          .fab-container {
-            bottom: 24px;
-            right: 24px;
-          }
+         
         }
 
         @media (max-width: 768px) {
@@ -1078,10 +1019,7 @@ export default function DashboardLayout() {
             min-width: 260px;
           }
 
-          .fab-container {
-            bottom: 20px;
-            right: 20px;
-          }
+          
 
           .fab-button {
             width: 48px;
@@ -1142,10 +1080,7 @@ export default function DashboardLayout() {
             font-size: 20px;
           }
 
-          .fab-container {
-            bottom: 16px;
-            right: 16px;
-          }
+         
 
           .fab-button {
             width: 44px;

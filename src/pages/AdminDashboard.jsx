@@ -635,15 +635,7 @@ export default function Overview() {
           margin-bottom: 24px;
         }
 
-        .stat-card {
-          background: white;
-          padding: 20px;
-          border-radius: 12px;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-          display: flex;
-          align-items: center;
-          gap: 16px;
-        }
+        
 
         .stat-icon {
           width: 48px;
