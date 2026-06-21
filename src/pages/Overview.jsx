@@ -15,6 +15,10 @@ import {
   Clock,
   CheckCircle,
   XCircle,
+  Sofa,
+  Bed,
+  Bath,
+  DoorOpen,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -23,120 +27,231 @@ export default function Overview() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalProperties: 0,
-    totalRentals: 0,
+    activeRentals: 0,
     totalTenants: 0,
     totalInvoices: 0,
     paidInvoices: 0,
     overdueInvoices: 0,
     totalRevenue: 0,
     monthlyRevenue: 0,
+    availableCottageSeats: 0,
+    availableApartments: 0,
+    totalCottageRooms: 0,
+    totalApartmentUnits: 0,
   });
   const [recentActivity, setRecentActivity] = useState([]);
   const [upcomingPayments, setUpcomingPayments] = useState([]);
-
-  // Debug logging
-  useEffect(() => {
-    console.log("=== Overview Debug ===");
-    console.log("User:", user?.email);
-    console.log("Profile:", profile);
-    console.log("Profile role_id:", profile?.role_id);
-    console.log("Profile roles:", profile?.roles);
-    console.log("isSuperAdmin:", isSuperAdmin);
-    console.log("=====================");
-  }, [user, profile, isSuperAdmin]);
+  const [recentRentals, setRecentRentals] = useState([]);
 
   async function loadDashboardData() {
     setLoading(true);
     try {
-      // IMPORTANT: Use isSuperAdmin directly from context
-      const isAdmin = isSuperAdmin === true;
-      console.log("Loading dashboard - isAdmin:", isAdmin);
+      let propertiesCount = 0;
+      let activeRentalsCount = 0;
+      let totalTenantsCount = 0;
+      let availableCottageSeats = 0;
+      let availableApartments = 0;
+      let totalCottageRooms = 0;
+      let totalApartmentUnits = 0;
 
-      // Get properties count
-      let query = supabase
-        .from("properties")
-        .select("*", { count: "exact", head: true });
-
-      // Only filter if NOT super admin
-      if (!isAdmin && user) {
-        console.log("Filtering properties for owner:", user.id);
-        query = query.eq("owner_id", user.id);
-      } else {
-        console.log("Super admin - fetching ALL properties");
-      }
-
-      const { count: propertiesCount, error: propError } = await query;
-      console.log("Properties count:", propertiesCount, "Error:", propError);
-
-      // Get rentals count
-      let rentalQuery = supabase
-        .from("rentals")
-        .select("*", { count: "exact", head: true });
-
-      if (!isAdmin && user) {
-        const { data: propertyIds } = await supabase
-          .from("properties")
-          .select("id")
-          .eq("owner_id", user.id);
-
-        if (propertyIds && propertyIds.length > 0) {
-          rentalQuery = rentalQuery.in(
-            "property_id",
-            propertyIds.map((p) => p.id),
-          );
-        } else {
-          // If no properties, return 0
-          rentalQuery = supabase
+      if (isSuperAdmin) {
+        // Super Admin - get ALL data (no owner filter)
+        const [
+          { count: allProperties },
+          { count: allActiveRentals },
+          { count: allTenants },
+          { data: allCottageRooms },
+          { data: allApartmentDetails },
+        ] = await Promise.all([
+          supabase
+            .from("properties")
+            .select("*", { count: "exact", head: true }), // No owner filter for super admin
+          supabase
             .from("rentals")
             .select("*", { count: "exact", head: true })
-            .eq("property_id", "00000000-0000-0000-0000-000000000000");
+            .eq("status_id", 1), // Active rentals only
+          supabase.from("tenants").select("*", { count: "exact", head: true }), // All tenants
+          supabase
+            .from("cottage_rooms")
+            .select("seat_capacity, is_occupied, id"), // All cottage rooms
+          supabase.from("apartment_details").select("property_id"), // All apartment details
+        ]);
+
+        propertiesCount = allProperties || 0;
+        activeRentalsCount = allActiveRentals || 0;
+        totalTenantsCount = allTenants || 0;
+        totalCottageRooms = allCottageRooms?.length || 0;
+        totalApartmentUnits = allApartmentDetails?.length || 0;
+
+        // Calculate available cottage seats
+        if (allCottageRooms && allCottageRooms.length > 0) {
+          let totalSeats = 0;
+          let occupiedSeats = 0;
+
+          allCottageRooms.forEach((room) => {
+            totalSeats += room.seat_capacity || 0;
+            if (room.is_occupied) {
+              occupiedSeats += room.seat_capacity || 0;
+            }
+          });
+
+          // Get active rentals for cottage rooms
+          const { data: activeCottageRentals } = await supabase
+            .from("rentals")
+            .select("cottage_room_id, seats_booked")
+            .eq("status_id", 1)
+            .not("cottage_room_id", "is", null);
+
+          if (activeCottageRentals && activeCottageRentals.length > 0) {
+            activeCottageRentals.forEach((rental) => {
+              const room = allCottageRooms.find(
+                (r) => r.id === rental.cottage_room_id,
+              );
+              if (room && !room.is_occupied) {
+                occupiedSeats += rental.seats_booked || 0;
+              }
+            });
+          }
+
+          availableCottageSeats = Math.max(0, totalSeats - occupiedSeats);
         }
-      }
 
-      const { count: rentalsCount, error: rentalError } = await rentalQuery;
-      console.log("Rentals count:", rentalsCount, "Error:", rentalError);
+        // Calculate available apartments
+        if (allApartmentDetails && allApartmentDetails.length > 0) {
+          const apartmentPropertyIds = allApartmentDetails.map(
+            (a) => a.property_id,
+          );
 
-      // Get tenants count (distinct)
-      let tenantQuery = supabase
-        .from("tenants")
-        .select("*", { count: "exact", head: true });
+          const { data: rentedApartments } = await supabase
+            .from("rentals")
+            .select("property_id")
+            .eq("status_id", 1)
+            .in("property_id", apartmentPropertyIds);
 
-      if (!isAdmin && user) {
-        const { data: propertyIds } = await supabase
+          const rentedPropertyIds = new Set(
+            rentedApartments?.map((r) => r.property_id) || [],
+          );
+          availableApartments = apartmentPropertyIds.filter(
+            (id) => !rentedPropertyIds.has(id),
+          ).length;
+        }
+      } else {
+        // Owner - get only their data
+        // Get owner's properties
+        const { data: ownerProperties, count: propCount } = await supabase
           .from("properties")
-          .select("id")
+          .select("id, property_type_id", { count: "exact" })
           .eq("owner_id", user.id);
 
-        if (propertyIds && propertyIds.length > 0) {
-          const { data: rentals } = await supabase
-            .from("rentals")
-            .select("tenant_id")
-            .in(
-              "property_id",
-              propertyIds.map((p) => p.id),
-            );
+        propertiesCount = propCount || 0;
 
-          if (rentals && rentals.length > 0) {
-            const tenantIds = [...new Set(rentals.map((r) => r.tenant_id))];
-            tenantQuery = tenantQuery.in("id", tenantIds);
-          } else {
-            tenantQuery = supabase
-              .from("tenants")
-              .select("*", { count: "exact", head: true })
-              .eq("id", "00000000-0000-0000-0000-000000000000");
+        if (ownerProperties && ownerProperties.length > 0) {
+          const propertyIds = ownerProperties.map((p) => p.id);
+
+          // Get active rentals count for owner's properties
+          const { count: rentalCount } = await supabase
+            .from("rentals")
+            .select("*", { count: "exact", head: true })
+            .in("property_id", propertyIds)
+            .eq("status_id", 1);
+
+          activeRentalsCount = rentalCount || 0;
+
+          // Get tenants - from tenants table with owner_id
+          const { count: tenantCount } = await supabase
+            .from("tenants")
+            .select("*", { count: "exact", head: true })
+            .eq("owner_id", user.id);
+
+          totalTenantsCount = tenantCount || 0;
+
+          // Get cottage rooms for this owner
+          const cottagePropertyIds = ownerProperties
+            .filter((p) => p.property_type_id === 2)
+            .map((p) => p.id);
+
+          if (cottagePropertyIds.length > 0) {
+            const { data: cottageRooms } = await supabase
+              .from("cottage_rooms")
+              .select("id, seat_capacity, is_occupied, property_id")
+              .in("property_id", cottagePropertyIds);
+
+            totalCottageRooms = cottageRooms?.length || 0;
+
+            if (cottageRooms && cottageRooms.length > 0) {
+              let totalSeats = 0;
+              let occupiedSeats = 0;
+
+              cottageRooms.forEach((room) => {
+                totalSeats += room.seat_capacity || 0;
+                if (room.is_occupied) {
+                  occupiedSeats += room.seat_capacity || 0;
+                }
+              });
+
+              // Get active rentals for these rooms
+              const roomIds = cottageRooms.map((r) => r.id);
+              const { data: activeCottageRentals } = await supabase
+                .from("rentals")
+                .select("cottage_room_id, seats_booked")
+                .eq("status_id", 1)
+                .in("cottage_room_id", roomIds);
+
+              if (activeCottageRentals && activeCottageRentals.length > 0) {
+                activeCottageRentals.forEach((rental) => {
+                  const room = cottageRooms.find(
+                    (r) => r.id === rental.cottage_room_id,
+                  );
+                  if (room && !room.is_occupied) {
+                    occupiedSeats += rental.seats_booked || 0;
+                  }
+                });
+              }
+
+              availableCottageSeats = Math.max(0, totalSeats - occupiedSeats);
+            }
+          }
+
+          // Get apartment details for this owner
+          const apartmentPropertyIds = ownerProperties
+            .filter((p) => p.property_type_id === 1)
+            .map((p) => p.id);
+
+          if (apartmentPropertyIds.length > 0) {
+            const { data: apartmentDetails } = await supabase
+              .from("apartment_details")
+              .select("property_id")
+              .in("property_id", apartmentPropertyIds);
+
+            totalApartmentUnits = apartmentDetails?.length || 0;
+
+            if (apartmentDetails && apartmentDetails.length > 0) {
+              const aptPropertyIds = apartmentDetails.map((a) => a.property_id);
+
+              const { data: rentedApartments } = await supabase
+                .from("rentals")
+                .select("property_id")
+                .eq("status_id", 1)
+                .in("property_id", aptPropertyIds);
+
+              const rentedPropertyIds = new Set(
+                rentedApartments?.map((r) => r.property_id) || [],
+              );
+              availableApartments = aptPropertyIds.filter(
+                (id) => !rentedPropertyIds.has(id),
+              ).length;
+            }
           }
         }
       }
 
-      const { count: tenantsCount, error: tenantError } = await tenantQuery;
-      console.log("Tenants count:", tenantsCount, "Error:", tenantError);
-
-      // Get invoices
+      // Get invoices with proper filtering
       let invoiceQuery = supabase.from("invoices").select(`
           *,
           rentals(
             id,
             tenant_id,
+            status_id,
             tenants(full_name),
             properties(
               id,
@@ -146,7 +261,8 @@ export default function Overview() {
           )
         `);
 
-      if (!isAdmin && user) {
+      // For owners, filter invoices to only their properties
+      if (!isSuperAdmin) {
         const { data: propertyIds } = await supabase
           .from("properties")
           .select("id")
@@ -167,18 +283,24 @@ export default function Overview() {
               rentals.map((r) => r.id),
             );
           } else {
+            // No rentals, return empty result
             invoiceQuery = supabase
               .from("invoices")
               .select("*", { count: "exact", head: true })
               .eq("rental_id", "00000000-0000-0000-0000-000000000000");
           }
+        } else {
+          // No properties, return empty result
+          invoiceQuery = supabase
+            .from("invoices")
+            .select("*", { count: "exact", head: true })
+            .eq("rental_id", "00000000-0000-0000-0000-000000000000");
         }
       }
 
-      const { data: invoices, error: invoiceError } = await invoiceQuery
+      const { data: invoices } = await invoiceQuery
         .order("due_date", { ascending: false })
         .limit(10);
-      console.log("Invoices count:", invoices?.length, "Error:", invoiceError);
 
       // Calculate invoice stats
       const totalInvoices = invoices?.length || 0;
@@ -200,7 +322,7 @@ export default function Overview() {
         .select("amount_paid, paid_at, invoice_id")
         .gte("paid_at", thirtyDaysAgo.toISOString());
 
-      if (!isAdmin && user) {
+      if (!isSuperAdmin) {
         const { data: propertyIds } = await supabase
           .from("properties")
           .select("id")
@@ -234,30 +356,31 @@ export default function Overview() {
         }
       }
 
-      const { data: recentPayments, error: paymentError } = await paymentQuery;
-      console.log(
-        "Payments count:",
-        recentPayments?.length,
-        "Error:",
-        paymentError,
-      );
+      const { data: recentPayments } = await paymentQuery;
 
       const monthlyRevenue =
         recentPayments?.reduce((sum, p) => sum + Number(p.amount_paid), 0) || 0;
 
       setStats({
-        totalProperties: propertiesCount || 0,
-        totalRentals: rentalsCount || 0,
-        totalTenants: tenantsCount || 0,
+        totalProperties: propertiesCount,
+        activeRentals: activeRentalsCount,
+        totalTenants: totalTenantsCount,
         totalInvoices,
         paidInvoices,
         overdueInvoices,
         totalRevenue,
         monthlyRevenue,
+        availableCottageSeats,
+        availableApartments,
+        totalCottageRooms,
+        totalApartmentUnits,
       });
 
-      // Get recent activity
-      let activityQuery = supabase
+      // Get recent activity (invoices and new rentals)
+      const activity = [];
+
+      // Get recent invoices
+      let activityInvoiceQuery = supabase
         .from("invoices")
         .select(
           `
@@ -265,6 +388,7 @@ export default function Overview() {
           rentals(
             id,
             tenant_id,
+            status_id,
             tenants(full_name),
             properties(
               id,
@@ -275,9 +399,9 @@ export default function Overview() {
         `,
         )
         .order("created_at", { ascending: false })
-        .limit(5);
+        .limit(3);
 
-      if (!isAdmin && user) {
+      if (!isSuperAdmin) {
         const { data: propertyIds } = await supabase
           .from("properties")
           .select("id")
@@ -293,7 +417,7 @@ export default function Overview() {
             );
 
           if (rentals && rentals.length > 0) {
-            activityQuery = activityQuery.in(
+            activityInvoiceQuery = activityInvoiceQuery.in(
               "rental_id",
               rentals.map((r) => r.id),
             );
@@ -301,27 +425,75 @@ export default function Overview() {
         }
       }
 
-      const { data: recentInvoices } = await activityQuery;
-
-      const activity = [];
+      const { data: recentInvoices } = await activityInvoiceQuery;
 
       recentInvoices?.forEach((inv) => {
         activity.push({
           id: inv.id,
           type: "invoice",
           title: `Invoice #${inv.id.slice(0, 8)}`,
-          description: inv.is_paid ? "Paid" : "Pending",
+          description: inv.is_paid ? "Paid" : "Pending Payment",
           date: inv.created_at,
           icon: FileText,
-          color: "text-green-600",
+          color: inv.is_paid ? "text-green-600" : "text-yellow-600",
+        });
+      });
+
+      // Get recent rentals
+      let rentalQuery = supabase
+        .from("rentals")
+        .select(
+          `
+          *,
+          tenants(full_name),
+          properties(name),
+          cottage_rooms(room_number)
+        `,
+        )
+        .order("created_at", { ascending: false })
+        .limit(2);
+
+      if (!isSuperAdmin) {
+        const { data: propertyIds } = await supabase
+          .from("properties")
+          .select("id")
+          .eq("owner_id", user.id);
+
+        if (propertyIds && propertyIds.length > 0) {
+          rentalQuery = rentalQuery.in(
+            "property_id",
+            propertyIds.map((p) => p.id),
+          );
+        }
+      }
+
+      const { data: recentRentalsData } = await rentalQuery;
+
+      recentRentalsData?.forEach((rental) => {
+        const propertyName =
+          rental.properties?.name ||
+          rental.cottage_rooms?.room_number ||
+          "Unknown Property";
+        activity.push({
+          id: rental.id,
+          type: "rental",
+          title: `New Rental - ${propertyName}`,
+          description: `${rental.tenants?.full_name || "Unknown"} started rental`,
+          date: rental.created_at,
+          icon: Home,
+          color: "text-blue-600",
         });
       });
 
       activity.sort((a, b) => new Date(b.date) - new Date(a.date));
       setRecentActivity(activity.slice(0, 5));
+      setRecentRentals(recentRentalsData || []);
 
       // Get upcoming payments
-      const nextWeek = new Date();
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const nextWeek = new Date(today);
       nextWeek.setDate(nextWeek.getDate() + 7);
 
       let upcomingQuery = supabase
@@ -332,6 +504,7 @@ export default function Overview() {
           rentals(
             id,
             tenant_id,
+            status_id,
             tenants(full_name),
             properties(
               id,
@@ -342,12 +515,12 @@ export default function Overview() {
         `,
         )
         .eq("is_paid", false)
-        .gte("due_date", new Date().toISOString().split("T")[0])
+        .gte("due_date", today.toISOString().split("T")[0])
         .lte("due_date", nextWeek.toISOString().split("T")[0])
         .order("due_date", { ascending: true })
         .limit(5);
 
-      if (!isAdmin && user) {
+      if (!isSuperAdmin) {
         const { data: propertyIds } = await supabase
           .from("properties")
           .select("id")
@@ -373,17 +546,6 @@ export default function Overview() {
 
       const { data: upcoming } = await upcomingQuery;
       setUpcomingPayments(upcoming || []);
-
-      console.log("Final stats:", {
-        totalProperties: propertiesCount,
-        totalRentals: rentalsCount,
-        totalTenants: tenantsCount,
-        totalInvoices,
-        paidInvoices,
-        overdueInvoices,
-        totalRevenue,
-        monthlyRevenue,
-      });
     } catch (error) {
       console.error("Error loading dashboard:", error);
     } finally {
@@ -416,7 +578,7 @@ export default function Overview() {
         </p>
       </div>
 
-      {/* Stats Cards - Different for Owner vs Super Admin */}
+      {/* Stats Cards */}
       <div className="stats-grid">
         <div className="stat-card">
           <div className="stat-icon blue">
@@ -433,7 +595,7 @@ export default function Overview() {
             <Users size={24} />
           </div>
           <div className="stat-info">
-            <h3>{stats.totalRentals}</h3>
+            <h3>{stats.activeRentals}</h3>
             <p>Active Rentals</p>
           </div>
         </div>
@@ -453,51 +615,75 @@ export default function Overview() {
             <DollarSign size={24} />
           </div>
           <div className="stat-info">
-            <h3>${stats.monthlyRevenue.toLocaleString()}</h3>
+            <h3>
+              {isSuperAdmin ? "$" : "৳"}
+              {stats.monthlyRevenue.toLocaleString()}
+            </h3>
             <p>Monthly Revenue</p>
           </div>
         </div>
 
-        {/* Extra stats for Super Admin */}
-        {isSuperAdmin && (
+        {/* Available Units - Only show if there are units */}
+        {(stats.totalCottageRooms > 0 || stats.totalApartmentUnits > 0) && (
           <>
-            <div className="stat-card">
-              <div className="stat-icon red">
-                <AlertCircle size={24} />
+            {stats.totalCottageRooms > 0 && (
+              <div className="stat-card">
+                <div className="stat-icon cyan">
+                  <Sofa size={24} />
+                </div>
+                <div className="stat-info">
+                  <h3>{stats.availableCottageSeats}</h3>
+                  <p>Available Cottage Seats</p>
+                  <small className="stat-sub">
+                    of {stats.totalCottageRooms} rooms
+                  </small>
+                </div>
               </div>
-              <div className="stat-info">
-                <h3>{stats.overdueInvoices}</h3>
-                <p>Overdue Invoices</p>
+            )}
+
+            {stats.totalApartmentUnits > 0 && (
+              <div className="stat-card">
+                <div className="stat-icon indigo">
+                  <Bed size={24} />
+                </div>
+                <div className="stat-info">
+                  <h3>{stats.availableApartments}</h3>
+                  <p>Available Apartments</p>
+                  <small className="stat-sub">
+                    of {stats.totalApartmentUnits} units
+                  </small>
+                </div>
               </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon teal">
-                <CheckCircle size={24} />
-              </div>
-              <div className="stat-info">
-                <h3>${stats.totalRevenue.toLocaleString()}</h3>
-                <p>Total Revenue</p>
-              </div>
-            </div>
+            )}
           </>
         )}
 
-        {/* Owner specific stat */}
-        {!isSuperAdmin && (
+        {/* Overdue stats */}
+        <div className="stat-card">
+          <div className="stat-icon red">
+            <AlertCircle size={24} />
+          </div>
+          <div className="stat-info">
+            <h3>{stats.overdueInvoices}</h3>
+            <p>Overdue Invoices</p>
+          </div>
+        </div>
+
+        {isSuperAdmin && (
           <div className="stat-card">
-            <div className="stat-icon red">
-              <CreditCard size={24} />
+            <div className="stat-icon teal">
+              <CheckCircle size={24} />
             </div>
             <div className="stat-info">
-              <h3>{stats.overdueInvoices}</h3>
-              <p>Overdue Invoices</p>
+              <h3>৳{stats.totalRevenue.toLocaleString()}</h3>
+              <p>Total Revenue</p>
             </div>
           </div>
         )}
       </div>
 
       <div className="dashboard-grid">
-        {/* Recent Activity - Shows only relevant activity */}
+        {/* Recent Activity */}
         <div className="dashboard-card activity-card">
           <div className="card-header">
             <h3>Recent Activity</h3>
@@ -559,7 +745,7 @@ export default function Overview() {
                         {payment.rentals?.tenants?.full_name || "Unknown"}
                       </span>
                       <span className="payment-amount">
-                        ${payment.amount_due}
+                        ৳{Number(payment.amount_due).toLocaleString()}
                       </span>
                     </div>
                     <div className="payment-meta">
@@ -580,7 +766,7 @@ export default function Overview() {
         </div>
       </div>
 
-      {/* Quick Actions - Different for Owner vs Super Admin */}
+      {/* Quick Actions */}
       <div className="quick-actions">
         <h3>Quick Actions</h3>
         <div className="action-grid">
@@ -595,6 +781,10 @@ export default function Overview() {
                 <UserPlus size={24} />
                 <span>New Rental</span>
               </Link>
+              <Link to="/dashboard/tenants" className="quick-action-card">
+                <Users size={24} />
+                <span>Add Tenant</span>
+              </Link>
               <Link to="/dashboard/invoices" className="quick-action-card">
                 <FileText size={24} />
                 <span>Create Invoice</span>
@@ -607,19 +797,19 @@ export default function Overview() {
           ) : (
             // Super Admin actions
             <>
-              <Link to="/admin" className="quick-action-card">
+              <Link to="/admin/users" className="quick-action-card">
                 <Users size={24} />
                 <span>Manage Users</span>
               </Link>
-              <Link to="/admin" className="quick-action-card">
+              <Link to="/admin/properties" className="quick-action-card">
                 <Building2 size={24} />
                 <span>All Properties</span>
               </Link>
-              <Link to="/admin" className="quick-action-card">
+              <Link to="/admin/reports" className="quick-action-card">
                 <AlertCircle size={24} />
                 <span>View Reports</span>
               </Link>
-              <Link to="/admin" className="quick-action-card">
+              <Link to="/admin/verify" className="quick-action-card">
                 <CheckCircle size={24} />
                 <span>Verify Users</span>
               </Link>
@@ -628,22 +818,30 @@ export default function Overview() {
         </div>
       </div>
 
-      {/* Super Admin extra section - Show all owners stats */}
+      {/* Super Admin extra section */}
       {isSuperAdmin && (
         <div className="admin-section">
           <h3>Admin Overview</h3>
           <div className="admin-stats-grid">
             <div className="admin-stat-card">
-              <h4>Total Owners</h4>
-              <span className="admin-stat-number">View in Admin</span>
-              <Link to="/admin" className="admin-stat-link">
-                Manage Owners →
-              </Link>
-            </div>
-            <div className="admin-stat-card">
               <h4>System Status</h4>
               <span className="admin-stat-status online">● Online</span>
               <p className="admin-stat-desc">All systems operational</p>
+              <div className="admin-stat-details">
+                <span>
+                  Total Owners: {stats.totalProperties > 0 ? "Active" : "0"}
+                </span>
+              </div>
+            </div>
+            <div className="admin-stat-card">
+              <h4>Revenue Summary</h4>
+              <span className="admin-stat-number">
+                ৳{stats.totalRevenue.toLocaleString()}
+              </span>
+              <p className="admin-stat-desc">Total collected</p>
+              <Link to="/admin/reports" className="admin-stat-link">
+                View Reports →
+              </Link>
             </div>
           </div>
         </div>

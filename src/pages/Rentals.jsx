@@ -517,46 +517,37 @@ export default function Rentals() {
           <div className="form-grid">
             <div className="form-section">
               <h4>Tenant Information</h4>
-
-              <label>
-                Full Name
-                <input
-                  value={tenantName}
-                  onChange={(e) => setTenantName(e.target.value)}
-                  required
-                  placeholder="Enter tenant name"
-                />
-              </label>
-
-              <div className="grid-2">
-                <label>
-                  Phone Number
-                  <input
-                    value={tenantPhone}
-                    onChange={(e) => setTenantPhone(e.target.value)}
-                    required
-                    placeholder="01XXXXXXXXX"
-                  />
-                </label>
-                <label>
-                  Email
-                  <input
-                    type="email"
-                    value={tenantEmail}
-                    onChange={(e) => setTenantEmail(e.target.value)}
-                    placeholder="tenant@email.com"
-                  />
-                </label>
-              </div>
-
-              <label>
-                NID Number
-                <input
-                  value={tenantNid}
-                  onChange={(e) => setTenantNid(e.target.value)}
-                  placeholder="NID number (optional)"
-                />
-              </label>
+              <label>Full Name</label>
+              <input
+                value={tenantName}
+                onChange={(e) => setTenantName(e.target.value)}
+                required
+                placeholder="Enter tenant name"
+                className="customInput"
+              />
+              <label>Phone Number</label>
+              <input
+                value={tenantPhone}
+                onChange={(e) => setTenantPhone(e.target.value)}
+                required
+                placeholder="01XXXXXXXXX"
+                className="customInput"
+              />
+              <label>Email</label>{" "}
+              <input
+                type="email"
+                value={tenantEmail}
+                onChange={(e) => setTenantEmail(e.target.value)}
+                placeholder="tenant@email.com"
+                className="customInput"
+              />
+              <label>NID Number</label>
+              <input
+                value={tenantNid}
+                onChange={(e) => setTenantNid(e.target.value)}
+                placeholder="NID number (optional)"
+                className="customInput"
+              />
             </div>
 
             <div className="form-section">
