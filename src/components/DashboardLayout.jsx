@@ -189,7 +189,7 @@ export default function DashboardLayout() {
             {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
           </button> */}
 
-          <div className="page-actions">
+          {/* <div className="page-actions">
             <span className="date-display">
               {new Date().toLocaleDateString("en-US", {
                 weekday: "long",
@@ -198,7 +198,7 @@ export default function DashboardLayout() {
                 day: "numeric",
               })}
             </span>
-          </div>
+          </div> */}
 
           <div className="profile-dropdown" ref={dropdownRef}>
             <button
