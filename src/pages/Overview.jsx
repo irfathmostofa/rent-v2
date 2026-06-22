@@ -6,19 +6,13 @@ import {
   Users,
   FileText,
   DollarSign,
-  Calendar,
   AlertCircle,
   Home,
   UserPlus,
-  CreditCard,
-  TrendingUp,
   Clock,
   CheckCircle,
-  XCircle,
   Sofa,
   Bed,
-  Bath,
-  DoorOpen,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -43,6 +37,56 @@ export default function Overview() {
   const [upcomingPayments, setUpcomingPayments] = useState([]);
   const [recentRentals, setRecentRentals] = useState([]);
 
+  // FIX: cottage rentals link via cottage_room_id, NOT property_id
+  // (property_id is left null for room-based bookings). Any owner query
+  // that only did `.in("property_id", propertyIds)` was silently dropping
+  // every cottage rental, invoice, and payment. This helper returns the
+  // full, correct set of rental ids for an owner across BOTH apartment
+  // and cottage properties.
+  async function getOwnerRentalIds(ownerId) {
+    const { data: ownerProperties } = await supabase
+      .from("properties")
+      .select("id, property_type_id")
+      .eq("owner_id", ownerId);
+
+    if (!ownerProperties || ownerProperties.length === 0) {
+      return { rentalIds: [], propertyIds: [] };
+    }
+
+    const propertyIds = ownerProperties.map((p) => p.id);
+    const cottagePropertyIds = ownerProperties
+      .filter((p) => p.property_type_id === 2)
+      .map((p) => p.id);
+
+    const rentalIdSet = new Set();
+
+    // Apartment rentals (property_id is set directly on the rental)
+    const { data: apartmentRentals } = await supabase
+      .from("rentals")
+      .select("id")
+      .in("property_id", propertyIds);
+    apartmentRentals?.forEach((r) => rentalIdSet.add(r.id));
+
+    // Cottage rentals (link via cottage_room_id -> cottage_rooms.property_id)
+    if (cottagePropertyIds.length > 0) {
+      const { data: cottageRooms } = await supabase
+        .from("cottage_rooms")
+        .select("id")
+        .in("property_id", cottagePropertyIds);
+
+      const roomIds = cottageRooms?.map((r) => r.id) || [];
+      if (roomIds.length > 0) {
+        const { data: cottageRentals } = await supabase
+          .from("rentals")
+          .select("id")
+          .in("cottage_room_id", roomIds);
+        cottageRentals?.forEach((r) => rentalIdSet.add(r.id));
+      }
+    }
+
+    return { rentalIds: Array.from(rentalIdSet), propertyIds };
+  }
+
   async function loadDashboardData() {
     setLoading(true);
     try {
@@ -53,6 +97,10 @@ export default function Overview() {
       let availableApartments = 0;
       let totalCottageRooms = 0;
       let totalApartmentUnits = 0;
+
+      // Rental ids relevant to this user — used to scope invoices/payments
+      // below. For super admin this stays empty/unused (no scoping needed).
+      let ownerRentalIds = [];
 
       if (isSuperAdmin) {
         // Super Admin - get ALL data (no owner filter)
@@ -71,9 +119,7 @@ export default function Overview() {
             .select("*", { count: "exact", head: true })
             .eq("status_id", 1), // Active rentals only
           supabase.from("tenants").select("*", { count: "exact", head: true }), // All tenants
-          supabase
-            .from("cottage_rooms")
-            .select("seat_capacity, is_occupied, id"), // All cottage rooms
+          supabase.from("cottage_rooms").select("id, seat_capacity"), // All cottage rooms
           supabase.from("apartment_details").select("property_id"), // All apartment details
         ]);
 
@@ -83,35 +129,25 @@ export default function Overview() {
         totalCottageRooms = allCottageRooms?.length || 0;
         totalApartmentUnits = allApartmentDetails?.length || 0;
 
-        // Calculate available cottage seats
+        // FIX: compute occupied seats purely from active rentals — never
+        // from the is_occupied flag, which can be stale/out of sync with
+        // actual seats_booked (e.g. partially booked rooms).
         if (allCottageRooms && allCottageRooms.length > 0) {
-          let totalSeats = 0;
-          let occupiedSeats = 0;
+          const totalSeats = allCottageRooms.reduce(
+            (sum, r) => sum + (r.seat_capacity || 0),
+            0,
+          );
 
-          allCottageRooms.forEach((room) => {
-            totalSeats += room.seat_capacity || 0;
-            if (room.is_occupied) {
-              occupiedSeats += room.seat_capacity || 0;
-            }
-          });
-
-          // Get active rentals for cottage rooms
           const { data: activeCottageRentals } = await supabase
             .from("rentals")
             .select("cottage_room_id, seats_booked")
             .eq("status_id", 1)
             .not("cottage_room_id", "is", null);
 
-          if (activeCottageRentals && activeCottageRentals.length > 0) {
-            activeCottageRentals.forEach((rental) => {
-              const room = allCottageRooms.find(
-                (r) => r.id === rental.cottage_room_id,
-              );
-              if (room && !room.is_occupied) {
-                occupiedSeats += rental.seats_booked || 0;
-              }
-            });
-          }
+          const occupiedSeats = (activeCottageRentals || []).reduce(
+            (sum, r) => sum + (r.seats_booked || 0),
+            0,
+          );
 
           availableCottageSeats = Math.max(0, totalSeats - occupiedSeats);
         }
@@ -137,25 +173,23 @@ export default function Overview() {
         }
       } else {
         // Owner - get only their data
-        // Get owner's properties
-        const { data: ownerProperties, count: propCount } = await supabase
-          .from("properties")
-          .select("id, property_type_id", { count: "exact" })
-          .eq("owner_id", user.id);
+        const { rentalIds, propertyIds } = await getOwnerRentalIds(user.id);
+        ownerRentalIds = rentalIds;
 
-        propertiesCount = propCount || 0;
+        propertiesCount = propertyIds.length;
 
-        if (ownerProperties && ownerProperties.length > 0) {
-          const propertyIds = ownerProperties.map((p) => p.id);
-
-          // Get active rentals count for owner's properties
-          const { count: rentalCount } = await supabase
-            .from("rentals")
-            .select("*", { count: "exact", head: true })
-            .in("property_id", propertyIds)
-            .eq("status_id", 1);
-
-          activeRentalsCount = rentalCount || 0;
+        if (propertyIds.length > 0) {
+          // FIX: active rental count now includes cottage rentals too,
+          // by counting status_id=1 rentals among ownerRentalIds instead
+          // of only `.in("property_id", propertyIds)`.
+          if (ownerRentalIds.length > 0) {
+            const { count: rentalCount } = await supabase
+              .from("rentals")
+              .select("*", { count: "exact", head: true })
+              .in("id", ownerRentalIds)
+              .eq("status_id", 1);
+            activeRentalsCount = rentalCount || 0;
+          }
 
           // Get tenants - from tenants table with owner_id
           const { count: tenantCount } = await supabase
@@ -166,30 +200,30 @@ export default function Overview() {
           totalTenantsCount = tenantCount || 0;
 
           // Get cottage rooms for this owner
-          const cottagePropertyIds = ownerProperties
+          const { data: ownerPropertiesFull } = await supabase
+            .from("properties")
+            .select("id, property_type_id")
+            .eq("owner_id", user.id);
+
+          const cottagePropertyIds = (ownerPropertiesFull || [])
             .filter((p) => p.property_type_id === 2)
             .map((p) => p.id);
 
           if (cottagePropertyIds.length > 0) {
             const { data: cottageRooms } = await supabase
               .from("cottage_rooms")
-              .select("id, seat_capacity, is_occupied, property_id")
+              .select("id, seat_capacity, property_id")
               .in("property_id", cottagePropertyIds);
 
             totalCottageRooms = cottageRooms?.length || 0;
 
             if (cottageRooms && cottageRooms.length > 0) {
-              let totalSeats = 0;
-              let occupiedSeats = 0;
+              const totalSeats = cottageRooms.reduce(
+                (sum, r) => sum + (r.seat_capacity || 0),
+                0,
+              );
 
-              cottageRooms.forEach((room) => {
-                totalSeats += room.seat_capacity || 0;
-                if (room.is_occupied) {
-                  occupiedSeats += room.seat_capacity || 0;
-                }
-              });
-
-              // Get active rentals for these rooms
+              // FIX: same is_occupied-independent calculation as above
               const roomIds = cottageRooms.map((r) => r.id);
               const { data: activeCottageRentals } = await supabase
                 .from("rentals")
@@ -197,23 +231,17 @@ export default function Overview() {
                 .eq("status_id", 1)
                 .in("cottage_room_id", roomIds);
 
-              if (activeCottageRentals && activeCottageRentals.length > 0) {
-                activeCottageRentals.forEach((rental) => {
-                  const room = cottageRooms.find(
-                    (r) => r.id === rental.cottage_room_id,
-                  );
-                  if (room && !room.is_occupied) {
-                    occupiedSeats += rental.seats_booked || 0;
-                  }
-                });
-              }
+              const occupiedSeats = (activeCottageRentals || []).reduce(
+                (sum, r) => sum + (r.seats_booked || 0),
+                0,
+              );
 
               availableCottageSeats = Math.max(0, totalSeats - occupiedSeats);
             }
           }
 
           // Get apartment details for this owner
-          const apartmentPropertyIds = ownerProperties
+          const apartmentPropertyIds = (ownerPropertiesFull || [])
             .filter((p) => p.property_type_id === 1)
             .map((p) => p.id);
 
@@ -246,6 +274,8 @@ export default function Overview() {
       }
 
       // Get invoices with proper filtering
+      // FIX: for owners, scope by ownerRentalIds (apartments + cottages)
+      // instead of re-deriving from property_id only.
       let invoiceQuery = supabase.from("invoices").select(`
           *,
           rentals(
@@ -261,36 +291,10 @@ export default function Overview() {
           )
         `);
 
-      // For owners, filter invoices to only their properties
       if (!isSuperAdmin) {
-        const { data: propertyIds } = await supabase
-          .from("properties")
-          .select("id")
-          .eq("owner_id", user.id);
-
-        if (propertyIds && propertyIds.length > 0) {
-          const { data: rentals } = await supabase
-            .from("rentals")
-            .select("id")
-            .in(
-              "property_id",
-              propertyIds.map((p) => p.id),
-            );
-
-          if (rentals && rentals.length > 0) {
-            invoiceQuery = invoiceQuery.in(
-              "rental_id",
-              rentals.map((r) => r.id),
-            );
-          } else {
-            // No rentals, return empty result
-            invoiceQuery = supabase
-              .from("invoices")
-              .select("*", { count: "exact", head: true })
-              .eq("rental_id", "00000000-0000-0000-0000-000000000000");
-          }
+        if (ownerRentalIds.length > 0) {
+          invoiceQuery = invoiceQuery.in("rental_id", ownerRentalIds);
         } else {
-          // No properties, return empty result
           invoiceQuery = supabase
             .from("invoices")
             .select("*", { count: "exact", head: true })
@@ -323,36 +327,28 @@ export default function Overview() {
         .gte("paid_at", thirtyDaysAgo.toISOString());
 
       if (!isSuperAdmin) {
-        const { data: propertyIds } = await supabase
-          .from("properties")
-          .select("id")
-          .eq("owner_id", user.id);
-
-        if (propertyIds && propertyIds.length > 0) {
-          const { data: rentals } = await supabase
-            .from("rentals")
+        if (ownerRentalIds.length > 0) {
+          const { data: invoicesForPayments } = await supabase
+            .from("invoices")
             .select("id")
-            .in(
-              "property_id",
-              propertyIds.map((p) => p.id),
+            .in("rental_id", ownerRentalIds);
+
+          if (invoicesForPayments && invoicesForPayments.length > 0) {
+            paymentQuery = paymentQuery.in(
+              "invoice_id",
+              invoicesForPayments.map((i) => i.id),
             );
-
-          if (rentals && rentals.length > 0) {
-            const { data: invoicesForPayments } = await supabase
-              .from("invoices")
-              .select("id")
-              .in(
-                "rental_id",
-                rentals.map((r) => r.id),
-              );
-
-            if (invoicesForPayments && invoicesForPayments.length > 0) {
-              paymentQuery = paymentQuery.in(
-                "invoice_id",
-                invoicesForPayments.map((i) => i.id),
-              );
-            }
+          } else {
+            paymentQuery = paymentQuery.eq(
+              "invoice_id",
+              "00000000-0000-0000-0000-000000000000",
+            );
           }
+        } else {
+          paymentQuery = paymentQuery.eq(
+            "invoice_id",
+            "00000000-0000-0000-0000-000000000000",
+          );
         }
       }
 
@@ -401,28 +397,16 @@ export default function Overview() {
         .order("created_at", { ascending: false })
         .limit(3);
 
-      if (!isSuperAdmin) {
-        const { data: propertyIds } = await supabase
-          .from("properties")
-          .select("id")
-          .eq("owner_id", user.id);
-
-        if (propertyIds && propertyIds.length > 0) {
-          const { data: rentals } = await supabase
-            .from("rentals")
-            .select("id")
-            .in(
-              "property_id",
-              propertyIds.map((p) => p.id),
-            );
-
-          if (rentals && rentals.length > 0) {
-            activityInvoiceQuery = activityInvoiceQuery.in(
-              "rental_id",
-              rentals.map((r) => r.id),
-            );
-          }
-        }
+      if (!isSuperAdmin && ownerRentalIds.length > 0) {
+        activityInvoiceQuery = activityInvoiceQuery.in(
+          "rental_id",
+          ownerRentalIds,
+        );
+      } else if (!isSuperAdmin) {
+        activityInvoiceQuery = activityInvoiceQuery.eq(
+          "rental_id",
+          "00000000-0000-0000-0000-000000000000",
+        );
       }
 
       const { data: recentInvoices } = await activityInvoiceQuery;
@@ -440,6 +424,8 @@ export default function Overview() {
       });
 
       // Get recent rentals
+      // FIX: scope by ownerRentalIds (rentals.id) instead of property_id,
+      // so cottage rentals show up too.
       let rentalQuery = supabase
         .from("rentals")
         .select(
@@ -454,15 +440,12 @@ export default function Overview() {
         .limit(2);
 
       if (!isSuperAdmin) {
-        const { data: propertyIds } = await supabase
-          .from("properties")
-          .select("id")
-          .eq("owner_id", user.id);
-
-        if (propertyIds && propertyIds.length > 0) {
-          rentalQuery = rentalQuery.in(
-            "property_id",
-            propertyIds.map((p) => p.id),
+        if (ownerRentalIds.length > 0) {
+          rentalQuery = rentalQuery.in("id", ownerRentalIds);
+        } else {
+          rentalQuery = rentalQuery.eq(
+            "id",
+            "00000000-0000-0000-0000-000000000000",
           );
         }
       }
@@ -490,6 +473,8 @@ export default function Overview() {
       setRecentRentals(recentRentalsData || []);
 
       // Get upcoming payments
+      // FIX: scope by ownerRentalIds instead of property_id-only rentals,
+      // so cottage tenants' upcoming dues show up here too.
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
@@ -521,26 +506,13 @@ export default function Overview() {
         .limit(5);
 
       if (!isSuperAdmin) {
-        const { data: propertyIds } = await supabase
-          .from("properties")
-          .select("id")
-          .eq("owner_id", user.id);
-
-        if (propertyIds && propertyIds.length > 0) {
-          const { data: rentals } = await supabase
-            .from("rentals")
-            .select("id")
-            .in(
-              "property_id",
-              propertyIds.map((p) => p.id),
-            );
-
-          if (rentals && rentals.length > 0) {
-            upcomingQuery = upcomingQuery.in(
-              "rental_id",
-              rentals.map((r) => r.id),
-            );
-          }
+        if (ownerRentalIds.length > 0) {
+          upcomingQuery = upcomingQuery.in("rental_id", ownerRentalIds);
+        } else {
+          upcomingQuery = upcomingQuery.eq(
+            "rental_id",
+            "00000000-0000-0000-0000-000000000000",
+          );
         }
       }
 
@@ -633,7 +605,7 @@ export default function Overview() {
                 </div>
                 <div className="stat-info">
                   <h3>{stats.availableCottageSeats}</h3>
-                  <p>Available Cottage Seats</p>
+                  <p>Available Seats</p>
                   <small className="stat-sub">
                     of {stats.totalCottageRooms} rooms
                   </small>

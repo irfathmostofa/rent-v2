@@ -34,7 +34,11 @@
 }
 
 body {
-  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family:
+    "Segoe UI",
+    system-ui,
+    -apple-system,
+    sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   line-height: 1.6;
@@ -643,8 +647,12 @@ button {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* ============================================
@@ -967,8 +975,14 @@ button {
 }
 
 @keyframes fabActionsIn {
-  from { opacity: 0; transform: translateY(20px) scale(0.9); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .fab-action-item {
@@ -990,8 +1004,14 @@ button {
 }
 
 @keyframes fabActionItem {
-  from { opacity: 0; transform: translateX(20px) scale(0.9); }
-  to { opacity: 1; transform: translateX(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateX(20px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
 }
 
 .fab-action-item:hover {
@@ -1231,13 +1251,13 @@ button {
 .summary-grid,
 .admin-stats-grid {
   display: grid;
-  gap: 16px;
+  gap: 12px;
   margin-bottom: 24px;
 }
 
 .stat-grid,
 .stats-grid {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
 .summary-grid {
@@ -1261,7 +1281,7 @@ button {
 }
 
 .stat-card {
-  padding: 10px;
+  padding: 10px 12px;
 }
 
 .summary-card {
@@ -1281,13 +1301,13 @@ button {
 
 .stat-number {
   display: block;
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--text-primary);
 }
 
 .stat-label {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
 }
 
@@ -1301,8 +1321,13 @@ button {
 }
 
 .stat-icon {
-  width: 48px;
-  height: 48px;
+  width: 36px;
+  height: 36px;
+}
+
+.stat-icon svg {
+  width: 18px;
+  height: 18px;
 }
 
 .summary-icon {
@@ -1344,22 +1369,45 @@ button {
   background: #ccfbf1;
   color: #0d9488;
 }
+.stat-icon.cyan {
+  background: #cffafe;
+  color: #0891b2;
+}
+.stat-icon.indigo {
+  background: #e0e7ff;
+  color: #4f46e5;
+}
 .summary-card.revenue .summary-icon {
   background: #e0e7ff;
   color: var(--accent-color);
 }
 
+.stat-info {
+  min-width: 0;
+}
+
 .stat-info h3,
 .summary-value {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
   color: var(--text-primary);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .stat-info p,
 .summary-label {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
+  margin: 0;
+}
+
+.stat-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.8;
 }
 
 .summary-info {
@@ -1459,9 +1507,18 @@ button {
   flex-shrink: 0;
 }
 
-.activity-icon.text-green-600 { color: #059669; background: #d1fae5; }
-.activity-icon.text-yellow-600 { color: #d97706; background: #fef3c7; }
-.activity-icon.text-blue-600 { color: #2563eb; background: #dbeafe; }
+.activity-icon.text-green-600 {
+  color: #059669;
+  background: #d1fae5;
+}
+.activity-icon.text-yellow-600 {
+  color: #d97706;
+  background: #fef3c7;
+}
+.activity-icon.text-blue-600 {
+  color: #2563eb;
+  background: #dbeafe;
+}
 
 .activity-content {
   flex: 1;
@@ -1988,10 +2045,22 @@ button {
   white-space: nowrap;
 }
 
-.badge-success { background: #d1fae5; color: #065f46; }
-.badge-warning { background: #fef3c7; color: #92400e; }
-.badge-danger { background: #fee2e2; color: #991b1b; }
-.badge-secondary { background: #e5e7eb; color: var(--text-secondary); }
+.badge-success {
+  background: #d1fae5;
+  color: #065f46;
+}
+.badge-warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+.badge-danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.badge-secondary {
+  background: #e5e7eb;
+  color: var(--text-secondary);
+}
 
 .room-tags,
 .facility-tags,
@@ -2032,8 +2101,14 @@ button {
   font-weight: 600;
 }
 
-.room-status.available { background: #dcfce7; color: var(--success); }
-.room-status.occupied { background: #fee2e2; color: #ef4444; }
+.room-status.available {
+  background: #dcfce7;
+  color: var(--success);
+}
+.room-status.occupied {
+  background: #fee2e2;
+  color: #ef4444;
+}
 
 /* ============================================
    OWNER CARDS (admin)
@@ -2138,9 +2213,15 @@ button {
   background: #f3f4f6;
 }
 
-.action-item.activate { color: #059669; }
-.action-item.hold { color: #d97706; }
-.action-item.terminate { color: var(--danger); }
+.action-item.activate {
+  color: #059669;
+}
+.action-item.hold {
+  color: #d97706;
+}
+.action-item.terminate {
+  color: var(--danger);
+}
 
 .owner-expanded-details {
   padding: 0 20px 20px;
@@ -2149,8 +2230,14 @@ button {
 }
 
 @keyframes slideDown {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .reason-section {
@@ -2242,9 +2329,17 @@ button {
   border-radius: 6px;
 }
 
-.stat-mini span { font-size: 12px; color: var(--text-secondary); }
-.stat-mini strong { font-size: 14px; color: var(--text-primary); }
-.stat-mini.full-width { grid-column: 1 / -1; }
+.stat-mini span {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.stat-mini strong {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+.stat-mini.full-width {
+  grid-column: 1 / -1;
+}
 
 /* ============================================
    INLINE FORMS / PREVIEW
@@ -2446,8 +2541,12 @@ button {
   color: var(--text-secondary);
 }
 
-.days-until { color: var(--success); }
-.days-overdue { color: var(--danger); }
+.days-until {
+  color: var(--success);
+}
+.days-overdue {
+  color: var(--danger);
+}
 
 .amount-section,
 .financial-summary {
@@ -2483,11 +2582,17 @@ button {
 }
 
 .amount-section .value.paid,
-.summary-item .value.paid { color: var(--success); }
+.summary-item .value.paid {
+  color: var(--success);
+}
 .amount-section .value.remaining,
-.summary-item .value.outstanding { color: var(--danger); }
+.summary-item .value.outstanding {
+  color: var(--danger);
+}
 .amount-section .value.settled,
-.summary-item .value.settled { color: var(--text-secondary); }
+.summary-item .value.settled {
+  color: var(--text-secondary);
+}
 
 .summary-item {
   display: flex;
@@ -2601,8 +2706,12 @@ button {
   align-items: center;
 }
 
-.invoice-item .period { color: #374151; }
-.invoice-item .amount { font-weight: 600; }
+.invoice-item .period {
+  color: #374151;
+}
+.invoice-item .amount {
+  font-weight: 600;
+}
 
 .invoice-item .status {
   padding: 2px 8px;
@@ -2611,8 +2720,14 @@ button {
   font-size: 10px;
 }
 
-.invoice-item .status.paid { background: #dcfce7; color: var(--success); }
-.invoice-item .status.unpaid { background: #fee2e2; color: var(--danger); }
+.invoice-item .status.paid {
+  background: #dcfce7;
+  color: var(--success);
+}
+.invoice-item .status.unpaid {
+  background: #fee2e2;
+  color: var(--danger);
+}
 
 .invoice-card-footer,
 .property-card-footer,
@@ -2719,11 +2834,26 @@ button {
   text-transform: capitalize;
 }
 
-.template-badge.template-reminder { background: #eff6ff; color: #2563eb; }
-.template-badge.template-invoice { background: #dcfce7; color: var(--success); }
-.template-badge.template-overdue { background: #fee2e2; color: var(--danger); }
-.template-badge.template-welcome { background: #fef3c7; color: var(--warning); }
-.template-badge.template-custom { background: #f3e8ff; color: #9333ea; }
+.template-badge.template-reminder {
+  background: #eff6ff;
+  color: #2563eb;
+}
+.template-badge.template-invoice {
+  background: #dcfce7;
+  color: var(--success);
+}
+.template-badge.template-overdue {
+  background: #fee2e2;
+  color: var(--danger);
+}
+.template-badge.template-welcome {
+  background: #fef3c7;
+  color: var(--warning);
+}
+.template-badge.template-custom {
+  background: #f3e8ff;
+  color: #9333ea;
+}
 
 .template-actions {
   display: flex;
@@ -3055,7 +3185,9 @@ button {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ============================================
@@ -3497,5 +3629,204 @@ button {
 
   .log-info {
     flex-wrap: wrap;
+  }
+}
+/* Direct color classes used by Overdue.jsx's summary-icon — these were
+   missing; previously only the .summary-card.xxx .summary-icon pattern
+   was defined, which doesn't match this page's markup. */
+.summary-icon.red {
+  background: #fee2e2;
+  color: var(--danger, #ef4444);
+}
+.summary-icon.orange {
+  background: #ffedd5;
+  color: #ea580c;
+}
+.summary-icon.yellow {
+  background: #fef3c7;
+  color: #d97706;
+}
+.summary-icon.blue {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+/* Overdue card layout */
+.overdue-card {
+  background: white;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-color);
+  border-left: 4px solid transparent; /* color set inline per-row severity */
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
+  margin-bottom: 12px;
+  transition: var(--transition);
+}
+
+.overdue-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.tenant-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.tenant-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--accent-color, #4f46e5);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.tenant-name {
+  display: block;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.tenant-phone {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.overdue-badges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.severity-badge,
+.days-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.days-badge {
+  background: #f3f4f6;
+  color: var(--text-secondary);
+}
+
+.amount-info {
+  display: flex;
+  gap: 24px;
+  margin-top: 12px;
+}
+
+.amount-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.amount-item .label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.amount-item .value {
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.overdue-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-send-reminder {
+  background: var(--accent-color, #4f46e5);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.btn-send-reminder:hover {
+  opacity: 0.9;
+}
+
+/* ---- Mobile ---- */
+@media (max-width: 640px) {
+  .summary-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .overdue-card {
+    padding: 12px;
+  }
+
+  .overdue-card-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .overdue-badges {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+  }
+
+  .tenant-name {
+    max-width: 100%;
+  }
+
+  .amount-info {
+    gap: 16px;
+  }
+
+  .overdue-card-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .btn-send-reminder,
+  .btn-expand {
+    justify-content: center;
+    width: 100%;
   }
 }
