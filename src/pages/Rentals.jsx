@@ -12,7 +12,6 @@ import {
   Building2,
   DollarSign,
   Calendar,
-  MapPin,
   X,
   ChevronDown,
   ChevronUp,
@@ -21,9 +20,8 @@ import {
   Clock,
   Phone,
   Mail,
-  User,
   Key,
-  AlertCircle,
+  User,
 } from "lucide-react";
 
 export default function Rentals() {
@@ -88,6 +86,9 @@ export default function Rentals() {
       setPropertyOptions(options);
 
       // Load rentals with all related data
+      // NOTE: cottage_rooms here also pulls property_id so we can match
+      // cottage rentals back to their parent property (rentals.property_id
+      // is left null for cottage bookings — see filter fix below).
       const { data: rentalRows, error: rentalError } = await supabase
         .from("rentals")
         .select(
@@ -103,6 +104,7 @@ export default function Rentals() {
           ),
           cottage_rooms(
             id,
+            property_id,
             room_number,
             seat_capacity,
             seat_cost,
@@ -174,8 +176,15 @@ export default function Rentals() {
     }
 
     // Property filter
+    // FIX: cottage rentals have rental.property_id === null (they link via
+    // cottage_room_id instead), so comparing r.property_id directly always
+    // missed cottage rentals. Match on the room's own property_id too.
     if (filterProperty !== "all") {
-      filtered = filtered.filter((r) => r.property_id === filterProperty);
+      filtered = filtered.filter(
+        (r) =>
+          r.property_id === filterProperty ||
+          r.cottage_rooms?.property_id === filterProperty,
+      );
     }
 
     setFilteredRentals(filtered);
@@ -201,6 +210,26 @@ export default function Rentals() {
     }
   }
 
+  // Live seat math for a cottage room: how many seats are currently booked
+  // by ACTIVE rentals (status_id === 1), optionally excluding one rental
+  // (used while editing, so a rental doesn't "block" its own seats).
+  function getRoomBookedSeats(roomId, excludeRentalId = null) {
+    return rentals
+      .filter(
+        (r) =>
+          r.cottage_room_id === roomId &&
+          r.status_id === 1 &&
+          r.id !== excludeRentalId,
+      )
+      .reduce((sum, r) => sum + (r.seats_booked || 0), 0);
+  }
+
+  function getRoomAvailableSeats(room, excludeRentalId = null) {
+    if (!room) return 0;
+    const booked = getRoomBookedSeats(room.id, excludeRentalId);
+    return Math.max((room.seat_capacity || 0) - booked, 0);
+  }
+
   // Reset form
   function resetForm() {
     setTenantName("");
@@ -224,7 +253,9 @@ export default function Rentals() {
     setTenantPhone(rental.tenants?.phone_number || "");
     setTenantEmail(rental.tenants?.email || "");
     setTenantNid(rental.tenants?.nid_number || "");
-    setPropertyId(rental.property_id || "");
+    setPropertyId(
+      rental.property_id || rental.cottage_rooms?.property_id || "",
+    );
     setCottageRoomId(rental.cottage_room_id || "");
     setSeatsBooked(rental.seats_booked || 1);
     setMonthlyRent(rental.monthly_rent || "");
@@ -243,12 +274,20 @@ export default function Rentals() {
       return;
 
     try {
+      const rental = rentals.find((r) => r.id === rentalId);
+
       const { error } = await supabase
         .from("rentals")
         .delete()
         .eq("id", rentalId);
 
       if (error) throw error;
+
+      // Recompute the room's occupancy now that this rental's seats are gone
+      if (rental?.cottage_room_id) {
+        await updateCottageRoomOccupancy(rental.cottage_room_id);
+      }
+
       await loadData();
     } catch (error) {
       setError(error.message);
@@ -270,13 +309,12 @@ export default function Rentals() {
 
       if (error) throw error;
 
-      // Mark cottage room as available
+      // FIX: don't force is_occupied to false outright — a room can have
+      // multiple tenants sharing seats. Recompute from the remaining
+      // active rentals so other tenants in the same room aren't affected.
       const rental = rentals.find((r) => r.id === rentalId);
       if (rental?.cottage_room_id) {
-        await supabase
-          .from("cottage_rooms")
-          .update({ is_occupied: false })
-          .eq("id", rental.cottage_room_id);
+        await updateCottageRoomOccupancy(rental.cottage_room_id);
       }
 
       await loadData();
@@ -291,6 +329,28 @@ export default function Rentals() {
     setSubmitting(true);
 
     try {
+      const isApartment = selectedProperty?.property_type_id === 1;
+      const isEditing = !!editingRental;
+
+      // Guard against overbooking a cottage room (live check, not the
+      // stale is_occupied flag)
+      if (!isApartment && cottageRoomId) {
+        const room = selectedProperty?.cottage_rooms?.find(
+          (r) => r.id === cottageRoomId,
+        );
+        const available = getRoomAvailableSeats(
+          room,
+          isEditing ? editingRental.id : null,
+        );
+        if (seatsBooked > available) {
+          setError(
+            `Only ${available} seat(s) available in this room. Reduce the seats booked.`,
+          );
+          setSubmitting(false);
+          return;
+        }
+      }
+
       // 1. Find or create tenant
       let { data: tenant } = await supabase
         .from("tenants")
@@ -299,7 +359,6 @@ export default function Rentals() {
         .maybeSingle();
 
       if (!tenant) {
-        // IMPORTANT: Add owner_id when creating a new tenant
         const { data: newTenant, error: tenantError } = await supabase
           .from("tenants")
           .insert({
@@ -307,7 +366,7 @@ export default function Rentals() {
             phone_number: tenantPhone,
             email: tenantEmail || null,
             nid_number: tenantNid || null,
-            owner_id: user.id, // ← THIS IS THE KEY FIX
+            owner_id: user.id,
           })
           .select()
           .single();
@@ -315,9 +374,6 @@ export default function Rentals() {
         if (tenantError) throw tenantError;
         tenant = newTenant;
       }
-
-      const isApartment = selectedProperty?.property_type_id === 1;
-      const isEditing = !!editingRental;
 
       const rentalPayload = {
         tenant_id: tenant.id,
@@ -343,6 +399,18 @@ export default function Rentals() {
 
         if (rentalError) throw rentalError;
         rental = data;
+
+        // Recompute occupancy for the room now assigned (and the old one,
+        // in case the tenant was moved to a different room)
+        if (!isApartment && cottageRoomId) {
+          await updateCottageRoomOccupancy(cottageRoomId);
+        }
+        if (
+          editingRental.cottage_room_id &&
+          editingRental.cottage_room_id !== cottageRoomId
+        ) {
+          await updateCottageRoomOccupancy(editingRental.cottage_room_id);
+        }
       } else {
         // Create new rental
         const { data, error: rentalError } = await supabase
@@ -371,12 +439,9 @@ export default function Rentals() {
 
         if (invoiceError) throw invoiceError;
 
-        // Mark cottage room as occupied
+        // Update cottage room occupancy based on actual bookings
         if (!isApartment && cottageRoomId) {
-          await supabase
-            .from("cottage_rooms")
-            .update({ is_occupied: true })
-            .eq("id", cottageRoomId);
+          await updateCottageRoomOccupancy(cottageRoomId);
         }
       }
 
@@ -387,6 +452,48 @@ export default function Rentals() {
     } catch (error) {
       setError(error.message);
       setSubmitting(false);
+    }
+  }
+
+  // Helper function to update cottage room occupancy
+  async function updateCottageRoomOccupancy(roomId) {
+    try {
+      // 1. Get room capacity
+      const { data: room, error: roomError } = await supabase
+        .from("cottage_rooms")
+        .select("seat_capacity")
+        .eq("id", roomId)
+        .single();
+
+      if (roomError) throw roomError;
+
+      // 2. Get total booked seats for this room from active rentals
+      const { data: activeRentals, error: rentalError } = await supabase
+        .from("rentals")
+        .select("seats_booked")
+        .eq("cottage_room_id", roomId)
+        .eq("status_id", 1); // Only active rentals
+
+      if (rentalError) throw rentalError;
+
+      // 3. Calculate total booked seats
+      const totalBookedSeats =
+        activeRentals?.reduce((sum, r) => sum + (r.seats_booked || 0), 0) || 0;
+
+      // 4. Update is_occupied based on whether all seats are booked
+      const isFullyOccupied = totalBookedSeats >= room.seat_capacity;
+
+      const { error: updateError } = await supabase
+        .from("cottage_rooms")
+        .update({ is_occupied: isFullyOccupied })
+        .eq("id", roomId);
+
+      if (updateError) throw updateError;
+
+      return isFullyOccupied;
+    } catch (error) {
+      console.error("Error updating cottage room occupancy:", error);
+      throw error;
     }
   }
 
@@ -610,23 +717,43 @@ export default function Rentals() {
                           (r) => r.id === e.target.value,
                         );
                         if (room) {
-                          setMonthlyRent(room.seat_cost * seatsBooked);
+                          // Cap seats to whatever's actually available
+                          const available = getRoomAvailableSeats(
+                            room,
+                            editingRental?.id,
+                          );
+                          const seats = Math.min(
+                            seatsBooked || 1,
+                            available || 1,
+                          );
+                          setSeatsBooked(seats);
+                          setMonthlyRent(room.seat_cost * seats);
                         }
                       }}
                       required
                     >
                       <option value="">Select room</option>
+                      {/* FIX: filter by LIVE available seats instead of the
+                          stale is_occupied flag, so partially-booked rooms
+                          still show up with their real remaining capacity */}
                       {selectedProperty.cottage_rooms
-                        ?.filter(
+                        ?.map((r) => ({
+                          ...r,
+                          available: getRoomAvailableSeats(
+                            r,
+                            editingRental?.id,
+                          ),
+                        }))
+                        .filter(
                           (r) =>
-                            !r.is_occupied ||
+                            r.available > 0 ||
                             r.id === editingRental?.cottage_room_id,
                         )
                         .map((r) => (
                           <option key={r.id} value={r.id}>
-                            Room {r.room_number} — {r.seat_capacity} seats — ৳
-                            {r.seat_cost}/seat
-                            {r.is_occupied && " (Occupied)"}
+                            Room {r.room_number} — {r.available}/
+                            {r.seat_capacity} seats free — ৳{r.seat_cost}/seat
+                            {r.available === 0 && " (Full)"}
                           </option>
                         ))}
                     </select>
@@ -639,23 +766,44 @@ export default function Rentals() {
                         type="number"
                         min="1"
                         max={
-                          selectedProperty.cottage_rooms?.find(
-                            (r) => r.id === cottageRoomId,
-                          )?.seat_capacity || 10
+                          getRoomAvailableSeats(
+                            selectedProperty.cottage_rooms?.find(
+                              (r) => r.id === cottageRoomId,
+                            ),
+                            editingRental?.id,
+                          ) || 10
                         }
                         value={seatsBooked}
                         onChange={(e) => {
-                          const val = parseInt(e.target.value) || 1;
-                          setSeatsBooked(val);
                           const room = selectedProperty.cottage_rooms?.find(
                             (r) => r.id === cottageRoomId,
                           );
+                          const available = getRoomAvailableSeats(
+                            room,
+                            editingRental?.id,
+                          );
+                          const val = Math.min(
+                            parseInt(e.target.value) || 1,
+                            available || 1,
+                          );
+                          setSeatsBooked(val);
                           if (room) {
                             setMonthlyRent(room.seat_cost * val);
                           }
                         }}
                         required
                       />
+                      {cottageRoomId && (
+                        <span className="hint">
+                          {getRoomAvailableSeats(
+                            selectedProperty.cottage_rooms?.find(
+                              (r) => r.id === cottageRoomId,
+                            ),
+                            editingRental?.id,
+                          )}{" "}
+                          seat(s) available in this room
+                        </span>
+                      )}
                     </label>
                     <label>
                       Rent per seat

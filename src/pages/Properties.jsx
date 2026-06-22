@@ -9,8 +9,6 @@ import {
   Trash2,
   Home,
   Building2,
-  Bed,
-  Bath,
   Wifi,
   Zap,
   Droplet,
@@ -19,12 +17,9 @@ import {
   Users,
   DollarSign,
   MapPin,
-  Calendar,
   X,
   ChevronDown,
   ChevronUp,
-  Eye,
-  EyeOff,
   CheckCircle,
   XCircle,
   Clock,
@@ -112,59 +107,70 @@ export default function Properties() {
   };
 
   // Function to check if an apartment is available
+  // (Apartments are rented as a whole unit, so rentals.property_id IS set here — this is fine as-is.)
   const checkApartmentAvailability = async (propertyId) => {
     try {
-      // Check if there's an active rental for this property
       const { data, error } = await supabase
         .from("rentals")
         .select("id, status_id, rental_status(name)")
         .eq("property_id", propertyId)
-        .eq("status_id", 1) // 1 = active
-        .maybeSingle();
-
-      if (error) throw error;
-
-      // If no active rental found, apartment is available
-      return !data;
-    } catch (error) {
-      console.error("Error checking apartment availability:", error);
-      return true; // Default to available if error
-    }
-  };
-
-  // Function to get rental status for a property
-  const getPropertyStatus = async (property) => {
-    if (property.property_type_id === 2) {
-      // Cottage - check individual room availability
-      const rooms = property.cottage_rooms || [];
-      const availableRooms = rooms.filter((r) => !r.is_occupied);
-      const occupiedRooms = rooms.filter((r) => r.is_occupied);
-
-      if (rooms.length === 0)
-        return { status: "unknown", label: "No Rooms", color: "gray" };
-      if (availableRooms.length === rooms.length)
-        return { status: "available", label: "All Available", color: "green" };
-      if (occupiedRooms.length === rooms.length)
-        return { status: "occupied", label: "Fully Occupied", color: "red" };
-      return {
-        status: "partial",
-        label: `${availableRooms.length} Available`,
-        color: "orange",
-      };
-    } else {
-      // Apartment - check if there's an active rental
-      const { data, error } = await supabase
-        .from("rentals")
-        .select("id, status_id")
-        .eq("property_id", property.id)
         .eq("status_id", 1)
         .maybeSingle();
 
-      if (error || !data) {
-        return { status: "available", label: "Available", color: "green" };
-      }
-      return { status: "occupied", label: "Occupied", color: "red" };
+      if (error) throw error;
+      return !data;
+    } catch (error) {
+      console.error("Error checking apartment availability:", error);
+      return true;
     }
+  };
+
+  // Function to get rental/seat status for a property
+  // FIX: Cottage rentals are linked via rentals.cottage_room_id, NOT rentals.property_id
+  // (property_id is left null for room-based bookings). So we must read the active
+  // rentals off each cottage_room itself (room.rentals), not off property.rentals.
+  const getPropertyStatus = async (property) => {
+    const rooms = property.cottage_rooms || [];
+
+    let totalSeats = 0;
+    let occupiedSeats = 0;
+
+    for (const room of rooms) {
+      totalSeats += room.seat_capacity || 0;
+
+      const bookedSeats = (room.rentals || [])
+        .filter((r) => r.status_id === 1) // only count active rentals
+        .reduce((sum, r) => sum + (r.seats_booked || 0), 0);
+
+      occupiedSeats += bookedSeats;
+    }
+
+    const availableSeats = Math.max(totalSeats - occupiedSeats, 0);
+
+    if (totalSeats > 0 && availableSeats <= 0) {
+      return {
+        status: "occupied",
+        label: "Fully Occupied",
+        availableSeats: 0,
+        totalSeats,
+      };
+    }
+
+    if (occupiedSeats > 0) {
+      return {
+        status: "partial",
+        label: `${availableSeats} seats available`,
+        availableSeats,
+        totalSeats,
+      };
+    }
+
+    return {
+      status: "available",
+      label: "All Available",
+      availableSeats: totalSeats,
+      totalSeats,
+    };
   };
 
   async function loadProperties() {
@@ -174,15 +180,16 @@ export default function Properties() {
         .from("properties")
         .select(
           `
-          *,
-          apartment_details(*),
-          apartment_rooms(*, room_types(name)),
-          cottage_rooms(*),
-          property_facilities(
-            *,
-            facilities(*)
-          )
-        `,
+    *,
+    apartment_details(*),
+    apartment_rooms(*, room_types(name)),
+    cottage_rooms(*, rentals(id, seats_booked, status_id)),
+    property_facilities(
+      *,
+      facilities(*)
+    ),
+    rentals(id, status_id)
+  `,
         )
         .order("created_at", { ascending: false });
 
@@ -199,7 +206,6 @@ export default function Properties() {
       setProperties(propertiesWithStatus);
       setFilteredProperties(propertiesWithStatus);
 
-      // Extract unique cities for filter
       const uniqueCities = [
         ...new Set(data?.map((p) => p.city).filter(Boolean)),
       ];
@@ -231,11 +237,9 @@ export default function Properties() {
     loadLookupData();
   }, []);
 
-  // Apply filters whenever properties, searchTerm, filterType, filterCity, or filterStatus changes
   useEffect(() => {
     let filtered = [...properties];
 
-    // Search filter
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(
@@ -246,18 +250,15 @@ export default function Properties() {
       );
     }
 
-    // Type filter
     if (filterType !== "all") {
       const typeId = filterType === "apartment" ? 1 : 2;
       filtered = filtered.filter((p) => p.property_type_id === typeId);
     }
 
-    // City filter
     if (filterCity !== "all") {
       filtered = filtered.filter((p) => p.city === filterCity);
     }
 
-    // Status filter
     if (filterStatus !== "all") {
       filtered = filtered.filter(
         (p) => p.availability?.status === filterStatus,
@@ -297,7 +298,6 @@ export default function Properties() {
         setSecurityDeposit(details.security_deposit || 0);
       }
 
-      // Load apartment rooms
       if (property.apartment_rooms?.length > 0) {
         const roomsMap = { ...defaultApartmentRooms };
         property.apartment_rooms.forEach((ar) => {
@@ -376,6 +376,7 @@ export default function Properties() {
           await handleCottageUpdate(propertyId);
         }
 
+        // Delete and recreate facilities
         await supabase
           .from("property_facilities")
           .delete()
@@ -461,9 +462,10 @@ export default function Properties() {
   async function handleCottageCreate(propertyId) {
     const roomRows = rooms.map((r) => ({
       property_id: propertyId,
-      room_number: r.room_number,
-      seat_capacity: r.seat_capacity,
-      seat_cost: r.seat_cost,
+      room_number: r.room_number.trim(),
+      seat_capacity: parseInt(r.seat_capacity) || 0,
+      seat_cost: parseFloat(r.seat_cost) || 0,
+      is_occupied: false, // New rooms start as not occupied
     }));
     const { error: roomError } = await supabase
       .from("cottage_rooms")
@@ -521,14 +523,41 @@ export default function Properties() {
   }
 
   async function handleCottageUpdate(propertyId) {
+    // Get existing rooms to preserve occupancy status
+    const { data: existingRooms } = await supabase
+      .from("cottage_rooms")
+      .select("id, room_number, is_occupied")
+      .eq("property_id", propertyId);
+
+    // Create a map of existing room numbers to their data
+    const existingRoomsMap = {};
+    if (existingRooms) {
+      existingRooms.forEach((room) => {
+        existingRoomsMap[room.room_number] = {
+          id: room.id,
+          is_occupied: room.is_occupied,
+        };
+      });
+    }
+
+    // Delete all existing rooms
     await supabase.from("cottage_rooms").delete().eq("property_id", propertyId);
 
-    const roomRows = rooms.map((r) => ({
-      property_id: propertyId,
-      room_number: r.room_number,
-      seat_capacity: r.seat_capacity,
-      seat_cost: r.seat_cost,
-    }));
+    // Insert updated rooms with preserved occupancy status
+    const roomRows = rooms.map((r) => {
+      const roomNumber = r.room_number.trim();
+      const existing = existingRoomsMap[roomNumber];
+
+      return {
+        property_id: propertyId,
+        room_number: roomNumber,
+        seat_capacity: parseInt(r.seat_capacity) || 0,
+        seat_cost: parseFloat(r.seat_cost) || 0,
+        // Preserve occupancy status if room existed, otherwise false
+        is_occupied: existing ? existing.is_occupied : false,
+      };
+    });
+
     const { error: roomError } = await supabase
       .from("cottage_rooms")
       .insert(roomRows);
@@ -595,7 +624,6 @@ export default function Properties() {
     setFilterStatus("all");
   }
 
-  // Get status icon and color
   function getStatusIconAndColor(status) {
     switch (status) {
       case "available":
@@ -969,6 +997,15 @@ export default function Properties() {
           {filteredProperties.map((p) => {
             const statusInfo = getStatusIconAndColor(p.availability?.status);
             const StatusIcon = statusInfo.icon;
+            const occupancyPct =
+              p.availability?.totalSeats > 0
+                ? Math.round(
+                    ((p.availability.totalSeats -
+                      p.availability.availableSeats) /
+                      p.availability.totalSeats) *
+                      100,
+                  )
+                : 0;
 
             return (
               <div className="property-card" key={p.id}>
@@ -991,6 +1028,9 @@ export default function Properties() {
                       borderRadius: "12px",
                       color: statusInfo.color,
                       fontWeight: 600,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
                     }}
                   >
                     <StatusIcon size={14} />
@@ -1036,7 +1076,6 @@ export default function Properties() {
                             </span>
                           </div>
                         )}
-                        {/* Show rental status for apartment */}
                         {p.availability?.status === "available" && (
                           <div
                             className="stat-item"
@@ -1082,32 +1121,28 @@ export default function Properties() {
                             </span>
                           </div>
                         )}
-                        {/* Show room availability for cottage */}
-                        {p.availability?.status === "available" && (
-                          <div
-                            className="stat-item"
-                            style={{ color: "#22c55e" }}
-                          >
-                            <CheckCircle size={14} />
-                            <span>All rooms available</span>
-                          </div>
-                        )}
-                        {p.availability?.status === "partial" && (
-                          <div
-                            className="stat-item"
-                            style={{ color: "#f59e0b" }}
-                          >
-                            <Clock size={14} />
-                            <span>{p.availability?.label}</span>
-                          </div>
-                        )}
-                        {p.availability?.status === "occupied" && (
-                          <div
-                            className="stat-item"
-                            style={{ color: "#ef4444" }}
-                          >
-                            <XCircle size={14} />
-                            <span>Fully occupied</span>
+
+                        {/* Seat occupancy progress bar — clearer at a glance than text alone */}
+                        {p.availability?.totalSeats > 0 && (
+                          <div className="seat-occupancy">
+                            <div className="seat-occupancy-bar">
+                              <div
+                                className="seat-occupancy-fill"
+                                style={{
+                                  width: `${occupancyPct}%`,
+                                  backgroundColor:
+                                    occupancyPct >= 100
+                                      ? "#ef4444"
+                                      : occupancyPct > 0
+                                        ? "#f59e0b"
+                                        : "#22c55e",
+                                }}
+                              />
+                            </div>
+                            <span className="seat-occupancy-label">
+                              {p.availability.availableSeats} of{" "}
+                              {p.availability.totalSeats} seats available
+                            </span>
                           </div>
                         )}
                       </>
@@ -1157,19 +1192,46 @@ export default function Properties() {
                       ) : (
                         <div className="room-details">
                           <strong>Room Details:</strong>
+
                           <div className="cottage-room-list">
-                            {p.cottage_rooms?.map((r) => (
-                              <div key={r.id} className="cottage-room-item">
-                                <span>Room {r.room_number}</span>
-                                <span>{r.seat_capacity} seats</span>
-                                <span>৳{r.seat_cost}/seat</span>
-                                <span
-                                  className={`room-status ${r.is_occupied ? "occupied" : "available"}`}
-                                >
-                                  {r.is_occupied ? "Occupied" : "Available"}
-                                </span>
-                              </div>
-                            ))}
+                            {p.cottage_rooms?.map((r) => {
+                              // FIX: read active bookings straight off this room's
+                              // own nested `rentals` (joined via cottage_room_id),
+                              // not off property.rentals (which only links apartments).
+                              const bookedSeats = (r.rentals || [])
+                                .filter((x) => x.status_id === 1)
+                                .reduce(
+                                  (sum, x) => sum + (x.seats_booked || 0),
+                                  0,
+                                );
+
+                              const availableSeats = Math.max(
+                                (r.seat_capacity || 0) - bookedSeats,
+                                0,
+                              );
+
+                              return (
+                                <div key={r.id} className="cottage-room-item">
+                                  <span>Room {r.room_number}</span>
+                                  <span>
+                                    {bookedSeats}/{r.seat_capacity} seats booked
+                                  </span>
+                                  <span>৳{r.seat_cost}/seat</span>
+
+                                  <span
+                                    className={`room-status ${
+                                      availableSeats > 0
+                                        ? "available"
+                                        : "occupied"
+                                    }`}
+                                  >
+                                    {availableSeats > 0
+                                      ? `${availableSeats} available`
+                                      : "Fully occupied"}
+                                  </span>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
