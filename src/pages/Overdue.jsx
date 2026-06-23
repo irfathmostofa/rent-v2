@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import {
   AlertTriangle,
   Send,
   Calendar,
   DollarSign,
   Phone,
-  User,
   Clock,
   Filter,
   Search,
@@ -15,14 +15,12 @@ import {
   ChevronDown,
   ChevronUp,
   RefreshCw,
-  Mail,
   CheckCircle,
-  TrendingUp,
   Users,
-  Building2,
 } from "lucide-react";
 
 export default function Overdue() {
+  const { user, isSuperAdmin } = useAuth();
   const [rows, setRows] = useState([]);
   const [filteredRows, setFilteredRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -34,15 +32,76 @@ export default function Overdue() {
 
   useEffect(() => {
     loadOverdue();
-  }, []);
+  }, [user, isSuperAdmin]);
+
+  // FIX: same pattern as the dashboard — cottage rentals link via
+  // cottage_room_id, not property_id, so we have to walk both paths to
+  // get the complete, correct set of rental ids that belong to this owner.
+  async function getOwnerRentalIds(ownerId) {
+    const { data: ownerProperties } = await supabase
+      .from("properties")
+      .select("id, property_type_id")
+      .eq("owner_id", ownerId);
+
+    if (!ownerProperties || ownerProperties.length === 0) return [];
+
+    const propertyIds = ownerProperties.map((p) => p.id);
+    const cottagePropertyIds = ownerProperties
+      .filter((p) => p.property_type_id === 2)
+      .map((p) => p.id);
+
+    const rentalIdSet = new Set();
+
+    const { data: apartmentRentals } = await supabase
+      .from("rentals")
+      .select("id")
+      .in("property_id", propertyIds);
+    apartmentRentals?.forEach((r) => rentalIdSet.add(r.id));
+
+    if (cottagePropertyIds.length > 0) {
+      const { data: cottageRooms } = await supabase
+        .from("cottage_rooms")
+        .select("id")
+        .in("property_id", cottagePropertyIds);
+
+      const roomIds = cottageRooms?.map((r) => r.id) || [];
+      if (roomIds.length > 0) {
+        const { data: cottageRentals } = await supabase
+          .from("rentals")
+          .select("id")
+          .in("cottage_room_id", roomIds);
+        cottageRentals?.forEach((r) => rentalIdSet.add(r.id));
+      }
+    }
+
+    return Array.from(rentalIdSet);
+  }
 
   async function loadOverdue() {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("overdue_invoices")
         .select("*")
         .order("days_overdue", { ascending: false });
+
+      // FIX: this previously had NO owner scoping at all — every owner
+      // saw every other owner's overdue tenants. Super admin still sees
+      // everything; owners are restricted to their own rentals.
+      if (!isSuperAdmin && user) {
+        const ownerRentalIds = await getOwnerRentalIds(user.id);
+
+        if (ownerRentalIds.length === 0) {
+          setRows([]);
+          setFilteredRows([]);
+          setLoading(false);
+          return;
+        }
+
+        query = query.in("rental_id", ownerRentalIds);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       setRows(data ?? []);
@@ -380,8 +439,6 @@ export default function Overdue() {
           })}
         </div>
       )}
-
-    
     </div>
   );
 }
