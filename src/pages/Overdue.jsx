@@ -389,43 +389,9 @@ export default function Overdue() {
                       </span>
                     </div>
                   </div>
-
-                  {isExpanded && (
-                    <div className="overdue-expanded">
-                      <div className="expanded-details">
-                        <div className="detail-row">
-                          <span className="detail-label">Invoice ID</span>
-                          <span className="detail-value">{row.invoice_id}</span>
-                        </div>
-                        <div className="detail-row">
-                          <span className="detail-label">Rental ID</span>
-                          <span className="detail-value">{row.rental_id}</span>
-                        </div>
-                        <div className="detail-row">
-                          <span className="detail-label">Days Overdue</span>
-                          <span className="detail-value">
-                            {row.days_overdue} days
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 <div className="overdue-card-footer">
-                  <button
-                    className="btn-expand"
-                    onClick={() =>
-                      setExpandedRow(isExpanded ? null : row.invoice_id)
-                    }
-                  >
-                    {isExpanded ? (
-                      <ChevronUp size={16} />
-                    ) : (
-                      <ChevronDown size={16} />
-                    )}
-                    {isExpanded ? "Show Less" : "Show Details"}
-                  </button>
                   <button
                     className="btn-send-reminder"
                     onClick={() => handleSendReminder(row)}
