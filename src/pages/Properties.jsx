@@ -32,7 +32,7 @@ const FACILITY_OPTIONS = [
   "wifi",
   "parking",
   "gas",
-  "mill",
+  "meal",
 ];
 const ROOM_TYPE_OPTIONS = [
   "bedroom",
@@ -54,7 +54,7 @@ const FACILITY_ICONS = {
   wifi: Wifi,
   parking: ParkingCircle,
   gas: Flame,
-  mill: CookingPot,
+  meal: CookingPot,
 };
 
 export default function Properties() {
